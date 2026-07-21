@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>上海机场做T监控 · 科技↔机场反向联动</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --card:#ffffff; --ink:#1f2933; --sub:#7b8794;
+    --up:#e63946; --down:#1d9e4e; --line:#e6eaef; --blue:#2563eb;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%;}
+  .wrap{max-width:920px;margin:0 auto;padding:14px 14px 48px;}
+  header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
+  .title{font-size:19px;font-weight:700;}
+  .title .sub{font-size:12px;font-weight:500;color:var(--sub);margin-left:6px;}
+  .clock{font-size:13px;color:var(--sub);font-variant-numeric:tabular-nums;}
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;}
+  .cname{font-size:13px;font-weight:600;display:flex;align-items:baseline;gap:6px;}
+  .ccode{font-size:11px;color:var(--sub);font-weight:400;}
+  .cprice{font-size:24px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums;line-height:1.1;}
+  .cpct{font-size:13px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums;}
+  .up{color:var(--up);} .down{color:var(--down);}
+  .signal{display:flex;gap:12px;align-items:stretch;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;padding:12px;margin-bottom:12px;}
+  .sig-level{display:flex;align-items:center;justify-content:center;min-width:88px;border-radius:10px;
+    color:#fff;font-size:19px;font-weight:700;padding:6px 8px;text-align:center;}
+  .sig-detail{flex:1;display:flex;flex-direction:column;justify-content:center;gap:3px;font-size:12.5px;}
+  .sig-detail #sigSpread,#sigTech{color:var(--sub);font-variant-numeric:tabular-nums;}
+  .sig-detail #sigAdvice{color:var(--ink);}
+  .chartbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:12px;}
+  canvas{display:block;width:100%;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12px;color:var(--sub);}
+  .legend .lg{display:inline-flex;align-items:center;gap:6px;}
+  .legend .lg i{width:14px;height:3px;border-radius:2px;display:inline-block;}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px;}
+  .panel h3{margin:0 0 8px;font-size:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+  .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;}
+  .stat{background:var(--bg);border-radius:10px;padding:8px;text-align:center;}
+  .stat .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .stat .l{font-size:11px;color:var(--sub);margin-top:2px;}
+  table{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums;}
+  th,td{padding:5px 4px;text-align:right;border-bottom:1px solid var(--line);}
+  th:nth-child(1),td:nth-child(1){text-align:left;}
+  th{color:var(--sub);font-weight:600;}
+  .hit-y{color:var(--down);} .hit-n{color:var(--up);}
+  .log{max-height:150px;overflow:auto;font-size:12px;line-height:1.7;color:var(--ink);font-variant-numeric:tabular-nums;}
+  .log-line{border-bottom:1px dashed var(--line);padding:2px 0;}
+  .note{background:#fff8e6;border:1px solid #ffe2a8;border-radius:12px;padding:11px 13px;font-size:12.5px;
+    line-height:1.7;color:#6b5300;margin-bottom:12px;}
+  .note b{color:#8a6d00;}
+  .controls{display:flex;gap:14px;align-items:center;font-size:13px;color:var(--sub);flex-wrap:wrap;}
+  .controls select{padding:3px 6px;border:1px solid var(--line);border-radius:6px;}
+  .controls button{padding:5px 12px;border:1px solid var(--blue);background:var(--blue);color:#fff;
+    border-radius:8px;cursor:pointer;font-size:13px;}
+  .controls button.ghost{background:#fff;color:var(--blue);}
+  @media(max-width:560px){
+    .cards{grid-template-columns:1fr;}
+    .cprice{font-size:28px;}
+    .signal{flex-direction:column;}
+    .sig-level{min-width:0;}
+    .summary{grid-template-columns:1fr;}
+    canvas{height:240px!important;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="title">上海机场 做T监控<span class="sub">科技 ↔ 机场 反向联动</span></div>
+    <div class="clock" id="clock">--:--:--</div>
+  </header>
+
+  <div class="cards" id="cards">
+    <div class="card">
+      <div class="cname">上海机场<span class="ccode">600009</span></div>
+      <div class="cprice" id="price_airport">--</div>
+      <div class="cpct" id="pct_airport">--</div>
+    </div>
+    <div class="card">
+      <div class="cname">科创50<span class="ccode">000688</span></div>
+      <div class="cprice" id="price_etf1">--</div>
+      <div class="cpct" id="pct_etf1">--</div>
+    </div>
+    <div class="card">
+      <div class="cname">创业板指<span class="ccode">399006</span></div>
+      <div class="cprice" id="price_etf2">--</div>
+      <div class="cpct" id="pct_etf2">--</div>
+    </div>
+  </div>
+
+  <div class="signal">
+    <div class="sig-level" id="sigLevel">--</div>
+    <div class="sig-detail">
+      <div id="sigSpread">背离度：--</div>
+      <div id="sigTech">科技均值：--　机场：--</div>
+      <div id="sigAdvice">--</div>
+    </div>
+  </div>
+
+  <div class="chartbox">
+    <canvas id="chart"></canvas>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="panel">
+    <h3>规律验证 · 近20交易日命中率 <button class="ghost" id="btBtn">重新统计</button></h3>
+    <div class="summary" id="btSummary">
+      <div class="stat"><div class="v" id="btRate">--</div><div class="l">反向命中率</div></div>
+      <div class="stat"><div class="v" id="btDays">--</div><div class="l">有效交易日</div></div>
+      <div class="stat"><div class="v" id="btSpread">--</div><div class="l">平均背离度</div></div>
+    </div>
+    <div style="overflow:auto;max-height:240px;">
+      <table id="btTable">
+        <thead><tr><th>日期</th><th>科技均值%</th><th>机场%</th><th>背离度</th><th>方向</th></tr></thead>
+        <tbody id="btBody"><tr><td colspan="5" style="text-align:center;color:var(--sub)">点击"重新统计"加载</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="logbox panel" style="margin-bottom:12px;">
+    <div class="logtitle" style="font-size:13px;font-weight:600;margin-bottom:8px;">信号日志（状态切换时记录）</div>
+    <div id="log" class="log"></div>
+  </div>
+
+  <div class="note">
+    <b>做T思路：</b>你已持有上海机场底仓。当科技指数（科创50 / 创业板指）大涨、机场被"抽血"下跌 → 相对低位，分批低吸；当科技回落、机场反弹 → 把低吸部分 T 出，赚价差、降成本。
+    <br><b>背离度</b> = 机场涨跌幅 − 科技均值涨跌幅。负值越大 = 机场越弱于科技 = 低吸机会；转正 = 机场转强 = 考虑高抛。
+    <br><b>注意：</b>这是统计相关性，不是因果；极端行情或风格切换时会失效。"命中率"只说明过去20天历史规律，不保证未来。买卖、仓位、止损由你自定。
+  </div>
+
+  <div class="controls">
+    <label>刷新
+      <select id="interval">
+        <option value="3000">3秒</option>
+        <option value="5000">5秒</option>
+        <option value="10000">10秒</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="sound"> 声音提醒</label>
+    <button id="refreshBtn">立即刷新</button>
+  </div>
+</div>
+
+<script>
+// ====== 配置：想换科技基准，改这里即可 ======
+const TARGET = {key:'airport', code:'sh600009', gvar:'v_sh600009', name:'上海机场', color:'#2563eb'};
+const TECH = [
+  {key:'etf1', code:'sh000688', gvar:'v_sh000688', name:'科创50',  color:'#e63946'},
+  {key:'etf2', code:'sz399006', gvar:'v_sz399006', name:'创业板指', color:'#7c3aed'},
+];
+const ALL = [TARGET, ...TECH];
+
+const state = { pct:{}, prevClose:{}, price:{}, series:{}, lastLevel:null };
+ALL.forEach(s=>state.series[s.key]=[]);
+
+// 图例
+const legend=document.getElementById('legend');
+ALL.forEach(s=>{
+  const sp=document.createElement('span'); sp.className='lg';
+  sp.innerHTML='<i style="background:'+s.color+'"></i>'+s.name;
+  legend.appendChild(sp);
+});
+
+function loadScript(url){
+  return new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src=url;
+    s.onload=()=>{ try{document.head.removeChild(s);}catch(e){} resolve(); };
+    s.onerror=()=>{ try{document.head.removeChild(s);}catch(e){} reject(new Error('加载失败')); };
+    document.head.appendChild(s);
+  });
+}
+
+function parseRealtime(str){
+  const p=str.split('~');
+  return { price:parseFloat(p[3]), prevClose:parseFloat(p[4]) };
+}
+
+let running=false;
+async function fetchCycle(){
+  if(running) return; running=true;
+  try{
+    const q=ALL.map(s=>s.code).join(',');
+    await loadScript('https://qt.gtimg.cn/q='+q);
+    ALL.forEach(s=>{
+      const r=parseRealtime(window[s.gvar]);
+      state.price[s.key]=r.price; state.prevClose[s.key]=r.prevClose;
+      state.pct[s.key]=(r.price-r.prevClose)/r.prevClose*100;
+    });
+    updateCards();
+    for(const s of ALL){
+      const mvar='md_'+s.key;
+      try{
+        await loadScript('https://web.ifzq.gtimg.cn/appstock/app/minute/query?code='+s.code+'&_var='+mvar);
+        const root=window[mvar];
+        const arr=(root&&root.data&&root.data[s.code]&&root.data[s.code].data&&root.data[s.code].data.data)||[];
+        const pc=state.prevClose[s.key];
+        state.series[s.key]=arr.map(row=>{
+          const f=row.trim().split(/\s+/);
+          const price=parseFloat(f[1]);
+          return { t:f[0], pct:(price-pc)/pc*100 };
+        });
+      }catch(e){ /* 保留上一轮曲线 */ }
+    }
+    drawChart();
+    computeSignal();
+  }catch(e){
+    logMsg('数据获取失败：'+e.message+'（可能网络/接口受限，稍后自动重试）');
+  }finally{ running=false; }
+}
+
+function updateCards(){
+  ALL.forEach(s=>{
+    const pct=state.pct[s.key];
+    const pe=document.getElementById('pct_'+s.key);
+    const el=document.getElementById('price_'+s.key);
+    el.textContent=state.price[s.key].toFixed(2);
+    const sign=pct>=0?'+':'';
+    pe.textContent=sign+pct.toFixed(2)+'%';
+    pe.className='cpct '+(pct>=0?'up':'down');
+    el.className='cprice '+(pct>=0?'up':'down');
+  });
+}
+
+function drawChart(){
+  const cv=document.getElementById('chart');
+  const box=cv.parentElement;
+  const dpr=window.devicePixelRatio||1;
+  const W=box.clientWidth, H=Math.max(240,Math.min(340,box.clientWidth*0.42));
+  cv.width=W*dpr; cv.height=H*dpr; cv.style.width=W+'px'; cv.style.height=H+'px';
+  const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,W,H);
+  let all=[];
+  ALL.forEach(s=>state.series[s.key].forEach(d=>all.push(d.pct)));
+  if(all.length===0){ ctx.fillStyle='#9aa3ad'; ctx.font='14px sans-serif'; ctx.fillText('加载分时数据中…',20,40); return; }
+  let min=Math.min(0,...all), max=Math.max(0,...all);
+  const pad=(max-min)*0.15||1; min-=pad; max+=pad;
+  const padL=46,padR=12,padT=14,padB=22;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const yOf=v=>padT+(max-v)/(max-min)*plotH;
+  ctx.strokeStyle='#eef1f5'; ctx.fillStyle='#9aa3ad'; ctx.font='11px sans-serif'; ctx.textAlign='right';
+  const ticks=5;
+  for(let i=0;i<=ticks;i++){ const v=min+(max-min)*i/ticks; const y=yOf(v);
+    ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(W-padR,y);ctx.stroke();
+    ctx.fillText(v.toFixed(1)+'%',padL-6,y+3); }
+  ctx.strokeStyle='#c9d1d9'; ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(padL,yOf(0));ctx.lineTo(W-padR,yOf(0));ctx.stroke(); ctx.setLineDash([]);
+  const xOffset=(hhmm)=>{
+    const hh=parseInt(hhmm.slice(0,2),10), mm=parseInt(hhmm.slice(2,4),10);
+    const mins=hh*60+mm;
+    if(mins<11*60+30) return mins-(9*60+30);   // 上午 09:30-11:30 -> 0..120
+    return 120+(mins-(13*60));                  // 下午 13:00-15:00 -> 120..240
+  };
+  const TOTAL=240;
+  ALL.forEach(s=>{
+    const ser=state.series[s.key]; if(ser.length<2) return;
+    ctx.strokeStyle=s.color; ctx.lineWidth=1.8; ctx.beginPath();
+    let started=false, prevOff=null;
+    ser.forEach(d=>{
+      const off=xOffset(d.t), x=padL+(off/TOTAL)*plotW, y=yOf(d.pct);
+      if(!started){ ctx.moveTo(x,y); started=true; }
+      else if(prevOff!==null && Math.abs(off-prevOff)>1){ ctx.moveTo(x,y); } // 跨午休不连线
+      else { ctx.lineTo(x,y); }
+      prevOff=off;
+    });
+    ctx.stroke();
+    const last=ser[ser.length-1];
+    ctx.fillStyle=s.color; ctx.beginPath();ctx.arc(padL+(xOffset(last.t)/TOTAL)*plotW,yOf(last.pct),3,0,7);ctx.fill();
+  });
+  ctx.fillStyle='#9aa3ad'; ctx.textAlign='center'; ctx.font='11px sans-serif';
+  [['09:30',0],['11:30 / 13:00',0.5],['15:00',1]].forEach(([t,f])=>{
+    ctx.fillText(t, padL+f*plotW, H-6);
+  });
+}
+
+function computeSignal(){
+  const a=state.pct[TARGET.key];
+  const tech=TECH.map(t=>state.pct[t.key]);
+  if([a,...tech].some(v=>typeof v!=='number'||isNaN(v))) return;
+  const techAvg=tech.reduce((x,y)=>x+y,0)/tech.length;
+  const spread=a-techAvg;
+  let level,advice,actionColor;
+  if(spread<=-1.5){ level='强低吸'; actionColor='#1d9e4e'; advice='科技强/机场弱：考虑低吸做T（逢低买，待科技回落、机场反弹时T出）'; }
+  else if(spread<-0.5){ level='弱低吸'; actionColor='#5bbf6a'; advice='机场偏弱：关注背离扩大，可小幅分批观察低吸'; }
+  else if(spread<0.5){ level='中性'; actionColor='#6c757d'; advice='联动平淡：观望为主，不急于做T'; }
+  else if(spread<1.5){ level='弱高抛'; actionColor='#e8743b'; advice='机场转强：若已低吸，可逢高T出部分'; }
+  else { level='强高抛'; actionColor='#e63946'; advice='机场明显强于科技：了结做T仓位、锁定利润'; }
+  document.getElementById('sigLevel').textContent=level;
+  document.getElementById('sigLevel').style.background=actionColor;
+  document.getElementById('sigSpread').textContent='背离度(机场 − 科技均值)：'+spread.toFixed(2)+' pt';
+  document.getElementById('sigTech').textContent='科技均值：'+techAvg.toFixed(2)+'%　机场：'+a.toFixed(2)+'%';
+  document.getElementById('sigAdvice').textContent=advice;
+  if(level!==state.lastLevel){
+    const t=new Date().toLocaleTimeString('zh-CN');
+    logMsg('['+t+'] '+level+'｜背离度 '+spread.toFixed(2)+'｜'+advice);
+    if(document.getElementById('sound').checked) beep(level);
+    state.lastLevel=level;
+  }
+}
+
+// ====== 近20交易日命中率回测 ======
+async function runBacktest(){
+  const btn=document.getElementById('btBtn'); btn.disabled=true; btn.textContent='统计中…';
+  logMsg('开始统计近20交易日命中率…');
+  try{
+    const days={};
+    for(const s of ALL){
+      const v='bt_'+s.key;
+      await loadScript('https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param='+s.code+',day,,,80,qfq&_var='+v);
+      const inner=(window[v]&&window[v].data&&window[v].data[s.code])||{};
+      const arr=inner.qfqday||inner.day||[];
+      const closes=arr.map(r=>parseFloat(r[2]));
+      days[s.key]=closes.map((c,i)=> i===0?0:(c-closes[i-1])/closes[i-1]*100);
+    }
+    const n=days[TARGET.key].length;
+    const N=20, start=Math.max(1,n-N);
+    let hits=0,total=0,sumSpread=0,excluded=0; const rows=[];
+    for(let i=start;i<n;i++){
+      const a=days[TARGET.key][i];
+      const tech=TECH.map(t=>days[t.key][i]);
+      const techAvg=tech.reduce((x,y)=>x+y,0)/tech.length;
+      const spread=a-techAvg;
+      const aUp=a>0,tUp=techAvg>0;
+      const dateStr=(window['bt_'+TARGET.key].data[TARGET.code].qfqday[i][0]||'').slice(5);
+      // 指数/ETF 单日真实涨跌不可能超过 15%，超过即前复权/除权伪影，整行剔除统计
+      if(Math.abs(a)>15||tech.some(v=>Math.abs(v)>15)){
+        excluded++;
+        rows.push({date:dateStr,techAvg,a,spread,aUp,tUp,dirty:true});
+        continue;
+      }
+      const hit=(aUp!==tUp); // 反向=命中
+      if(a!==0&&techAvg!==0){ total++; if(hit)hits++; }
+      sumSpread+=spread;
+      rows.push({date:dateStr,techAvg,a,spread,aUp,tUp,dirty:false});
+    }
+    const rate=total?(hits/total*100):0;
+    renderBacktest(rows,rate,total,sumSpread/Math.max(1,total),excluded);
+    logMsg('命中率统计完成：有效 '+total+' 个交易日（剔除 '+excluded+' 个复权伪影），反向 '+hits+' 天，命中率 '+rate.toFixed(0)+'%');
+  }catch(e){ logMsg('命中率统计失败：'+e.message); }
+  finally{ btn.disabled=false; btn.textContent='重新统计'; }
+}
+
+function renderBacktest(rows,rate,total,avgSpread,excluded){
+  document.getElementById('btRate').textContent=rate.toFixed(0)+'%';
+  document.getElementById('btRate').style.color = rate>=60?'#1d9e4e':(rate>=50?'#e8743b':'#e63946');
+  document.getElementById('btDays').textContent=total+(excluded?(' / 剔'+excluded):'');
+  document.getElementById('btSpread').textContent=(avgSpread>=0?'+':'')+avgSpread.toFixed(2);
+  const body=document.getElementById('btBody'); body.innerHTML='';
+  rows.slice().reverse().forEach(r=>{
+    const tr=document.createElement('tr');
+    const opp=(r.aUp!==r.tUp);
+    if(r.dirty){ tr.style.color='#b9b9b9'; tr.title='前复权/除权数据伪影，已剔除统计'; }
+    tr.innerHTML='<td>'+r.date+'</td>'+
+      '<td class="'+(r.techAvg>=0?'up':'down')+'">'+(r.techAvg>=0?'+':'')+r.techAvg.toFixed(2)+'</td>'+
+      '<td class="'+(r.a>=0?'up':'down')+'">'+(r.a>=0?'+':'')+r.a.toFixed(2)+'</td>'+
+      '<td>'+(r.spread>=0?'+':'')+r.spread.toFixed(2)+'</td>'+
+      '<td class="'+(r.dirty?'hit-x':(opp?'hit-y':'hit-n'))+'">'+(r.dirty?'伪影':(opp?'反向':'同向'))+'</td>';
+    body.appendChild(tr);
+  });
+}
+
+function beep(level){
+  try{
+    const ac=window.__ac||(window.__ac=new (window.AudioContext||window.webkitAudioContext)());
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.connect(g);g.connect(ac.destination);
+    o.frequency.value=level.indexOf('强')===0?880:520;
+    g.gain.value=0.05; o.start(); o.stop(ac.currentTime+0.18);
+  }catch(e){}
+}
+
+function logMsg(m){
+  const el=document.getElementById('log');
+  const d=document.createElement('div'); d.className='log-line'; d.textContent=m;
+  el.prepend(d);
+  while(el.children.length>60) el.removeChild(el.lastChild);
+}
+
+function tick(){ document.getElementById('clock').textContent=new Date().toLocaleTimeString('zh-CN'); }
+setInterval(tick,1000); tick();
+
+let timer=null;
+function startLoop(){
+  if(timer) clearInterval(timer);
+  const iv=parseInt(document.getElementById('interval').value,10);
+  timer=setInterval(fetchCycle, iv);
+  fetchCycle();
+}
+document.getElementById('interval').addEventListener('change',startLoop);
+document.getElementById('refreshBtn').addEventListener('click',fetchCycle);
+document.getElementById('btBtn').addEventListener('click',runBacktest);
+window.addEventListener('resize',drawChart);
+startLoop();
+setTimeout(runBacktest,1500); // 首屏自动统计一次
+</script>
+</body>
+</html>
