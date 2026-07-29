@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>上海机场做T监控 · 科技↔机场反向联动</title>
+<title>上海机场做T监控 · 科技↔机场↔老登反向联动</title>
 <style>
   :root{
     --bg:#f4f6f9; --card:#ffffff; --ink:#1f2933; --sub:#7b8794;
@@ -19,13 +19,14 @@
   .title{font-size:19px;font-weight:700;}
   .title .sub{font-size:12px;font-weight:500;color:var(--sub);margin-left:6px;}
   .clock{font-size:13px;color:var(--sub);font-variant-numeric:tabular-nums;}
-  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px;}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px;}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;}
   .cname{font-size:13px;font-weight:600;display:flex;align-items:baseline;gap:6px;}
   .ccode{font-size:11px;color:var(--sub);font-weight:400;}
   .cprice{font-size:24px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums;line-height:1.1;}
   .cpct{font-size:13px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums;}
   .up{color:var(--up);} .down{color:var(--down);}
+  .card .sub{font-size:11px;color:var(--sub);margin-top:5px;line-height:1.45;font-variant-numeric:tabular-nums;}
   .signal{display:flex;gap:12px;align-items:stretch;background:var(--card);border:1px solid var(--line);
     border-radius:12px;padding:12px;margin-bottom:12px;}
   .sig-level{display:flex;align-items:center;justify-content:center;min-width:88px;border-radius:10px;
@@ -72,7 +73,7 @@
 <body>
 <div class="wrap">
   <header>
-    <div class="title">上海机场 做T监控<span class="sub">科技 ↔ 机场 反向联动</span></div>
+    <div class="title">上海机场 做T监控<span class="sub">科技 ↔ 机场 ↔ 老登 反向联动</span></div>
     <div class="clock" id="clock">--:--:--</div>
   </header>
 
@@ -92,6 +93,12 @@
       <div class="cprice" id="price_etf2">--</div>
       <div class="cpct" id="pct_etf2">--</div>
     </div>
+    <div class="card">
+      <div class="cname">老登股组合<span class="ccode">消费旅游</span></div>
+      <div class="cprice" id="price_oldgrp">--</div>
+      <div class="cpct" id="pct_oldgrp">--</div>
+      <div class="sub" id="old_detail">茅台 -- | 五粮液 -- | 中免 --</div>
+    </div>
   </div>
 
   <div class="signal">
@@ -99,6 +106,7 @@
     <div class="sig-detail">
       <div id="sigSpread">背离度：--</div>
       <div id="sigTech">科技均值：--　机场：--</div>
+      <div id="sigOld">老登组合：--</div>
       <div id="sigAdvice">--</div>
     </div>
   </div>
@@ -131,6 +139,7 @@
   <div class="note">
     <b>做T思路：</b>你已持有上海机场底仓。当科技指数（科创50 / 创业板指）大涨、机场被"抽血"下跌 → 相对低位，分批低吸；当科技回落、机场反弹 → 把低吸部分 T 出，赚价差、降成本。
     <br><b>背离度</b> = 机场涨跌幅 − 科技均值涨跌幅。负值越大 = 机场越弱于科技 = 低吸机会；转正 = 机场转强 = 考虑高抛。
+    <br><b>老登股组合</b>（消费旅游：贵州茅台 / 五粮液 / 中国中免，等权）与机场同属传统蓝筹阵营——科技强时它俩一起被抽血、科技弱时一起反弹。若老登强而机场弱，说明机场相对老登有补涨空间，可关注低吸。
     <br><b>注意：</b>这是统计相关性，不是因果；极端行情或风格切换时会失效。"命中率"只说明过去20天历史规律，不保证未来。买卖、仓位、止损由你自定。
   </div>
 
@@ -154,14 +163,24 @@ const TECH = [
   {key:'etf1', code:'sh000688', gvar:'v_sh000688', name:'科创50',  color:'#e63946'},
   {key:'etf2', code:'sz399006', gvar:'v_sz399006', name:'创业板指', color:'#7c3aed'},
 ];
-const ALL = [TARGET, ...TECH];
+// 老登股(消费旅游线)：茅台 + 五粮液 + 中免，等权合成"老登股组合"
+const OLD = [
+  {key:'mt', code:'sh600519', gvar:'v_sh600519', name:'贵州茅台', color:'#b45309'},
+  {key:'wy', code:'sz000858', gvar:'v_sz000858', name:'五粮液',  color:'#92400e'},
+  {key:'zm', code:'sh601888', gvar:'v_sh601888', name:'中国中免', color:'#a16207'},
+];
+const OLDGRP = {key:'oldgrp', name:'老登股组合(消费旅游)', color:'#d97706'};
+const GROUP = [TARGET, ...TECH];      // 核心对照：机场 vs 科技（实时/图例/回测）
+const CHART = [...GROUP, OLDGRP];     // 图表绘制序列（含老登组合）
+const REAL  = [...GROUP, ...OLD];     // 需拉取实时+分时的标的（含3只老登成员）
 
-const state = { pct:{}, prevClose:{}, price:{}, series:{}, lastLevel:null };
-ALL.forEach(s=>state.series[s.key]=[]);
+const state = { pct:{}, prevClose:{}, price:{}, series:{}, oldPct:{}, lastLevel:null };
+CHART.forEach(s=>state.series[s.key]=[]);
+OLD.forEach(s=>state.series[s.key]=[]);
 
 // 图例
 const legend=document.getElementById('legend');
-ALL.forEach(s=>{
+CHART.forEach(s=>{
   const sp=document.createElement('span'); sp.className='lg';
   sp.innerHTML='<i style="background:'+s.color+'"></i>'+s.name;
   legend.appendChild(sp);
@@ -186,15 +205,17 @@ let running=false;
 async function fetchCycle(){
   if(running) return; running=true;
   try{
-    const q=ALL.map(s=>s.code).join(',');
+    const q=REAL.map(s=>s.code).join(',');
     await loadScript('https://qt.gtimg.cn/q='+q);
-    ALL.forEach(s=>{
+    REAL.forEach(s=>{
       const r=parseRealtime(window[s.gvar]);
       state.price[s.key]=r.price; state.prevClose[s.key]=r.prevClose;
       state.pct[s.key]=(r.price-r.prevClose)/r.prevClose*100;
     });
+    state.oldPct=OLD.reduce((o,s)=>{o[s.key]=state.pct[s.key];return o;},{});
+    state.pct['oldgrp']=OLD.reduce((x,s)=>x+state.pct[s.key],0)/OLD.length;
     updateCards();
-    for(const s of ALL){
+    for(const s of REAL){
       const mvar='md_'+s.key;
       try{
         await loadScript('https://web.ifzq.gtimg.cn/appstock/app/minute/query?code='+s.code+'&_var='+mvar);
@@ -208,6 +229,15 @@ async function fetchCycle(){
         });
       }catch(e){ /* 保留上一轮曲线 */ }
     }
+    // 合成老登股组合分时（3只等权，按相同交易日分时索引平均）
+    const lens=OLD.map(s=>state.series[s.key].length);
+    if(lens.every(L=>L>=2)){
+      const base=state.series[OLD[0].key];
+      state.series['oldgrp']=base.map((d,i)=>({
+        t:d.t,
+        pct:OLD.reduce((x,s)=>x+state.series[s.key][i].pct,0)/OLD.length
+      }));
+    }
     drawChart();
     computeSignal();
   }catch(e){
@@ -216,7 +246,7 @@ async function fetchCycle(){
 }
 
 function updateCards(){
-  ALL.forEach(s=>{
+  GROUP.forEach(s=>{
     const pct=state.pct[s.key];
     const pe=document.getElementById('pct_'+s.key);
     const el=document.getElementById('price_'+s.key);
@@ -226,6 +256,19 @@ function updateCards(){
     pe.className='cpct '+(pct>=0?'up':'down');
     el.className='cprice '+(pct>=0?'up':'down');
   });
+  // 老登组合卡
+  const op=state.pct['oldgrp'];
+  if(typeof op==='number'&&!isNaN(op)){
+    const ope=document.getElementById('pct_oldgrp');
+    ope.textContent=(op>=0?'+':'')+op.toFixed(2)+'%';
+    ope.className='cpct '+(op>=0?'up':'down');
+    const ope2=document.getElementById('price_oldgrp');
+    ope2.textContent='组合'; ope2.className='cprice';
+    document.getElementById('old_detail').innerHTML=OLD.map(s=>
+      '<span class="'+(state.oldPct[s.key]>=0?'up':'down')+'">'+s.name.slice(0,2)+' '+
+      (state.oldPct[s.key]>=0?'+':'')+state.oldPct[s.key].toFixed(2)+'%</span>'
+    ).join('　');
+  }
 }
 
 function drawChart(){
@@ -237,7 +280,7 @@ function drawChart(){
   const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,W,H);
   let all=[];
-  ALL.forEach(s=>state.series[s.key].forEach(d=>all.push(d.pct)));
+  CHART.forEach(s=>state.series[s.key].forEach(d=>all.push(d.pct)));
   if(all.length===0){ ctx.fillStyle='#9aa3ad'; ctx.font='14px sans-serif'; ctx.fillText('加载分时数据中…',20,40); return; }
   let min=Math.min(0,...all), max=Math.max(0,...all);
   const pad=(max-min)*0.15||1; min-=pad; max+=pad;
@@ -258,7 +301,7 @@ function drawChart(){
     return 120+(mins-(13*60));                  // 下午 13:00-15:00 -> 120..240
   };
   const TOTAL=240;
-  ALL.forEach(s=>{
+  CHART.forEach(s=>{
     const ser=state.series[s.key]; if(ser.length<2) return;
     ctx.strokeStyle=s.color; ctx.lineWidth=1.8; ctx.beginPath();
     let started=false, prevOff=null;
@@ -295,6 +338,12 @@ function computeSignal(){
   document.getElementById('sigLevel').style.background=actionColor;
   document.getElementById('sigSpread').textContent='背离度(机场 − 科技均值)：'+spread.toFixed(2)+' pt';
   document.getElementById('sigTech').textContent='科技均值：'+techAvg.toFixed(2)+'%　机场：'+a.toFixed(2)+'%';
+  const op=state.pct['oldgrp'];
+  const so=document.getElementById('sigOld');
+  if(typeof op==='number'&&!isNaN(op)){
+    so.textContent='老登组合(消费旅游)：'+(op>=0?'+':'')+op.toFixed(2)+'%';
+    so.style.color=op>=0?'var(--up)':'var(--down)';
+  }
   document.getElementById('sigAdvice').textContent=advice;
   if(level!==state.lastLevel){
     const t=new Date().toLocaleTimeString('zh-CN');
@@ -310,7 +359,7 @@ async function runBacktest(){
   logMsg('开始统计近20交易日命中率…');
   try{
     const days={};
-    for(const s of ALL){
+    for(const s of GROUP){
       const v='bt_'+s.key;
       await loadScript('https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param='+s.code+',day,,,80,qfq&_var='+v);
       const inner=(window[v]&&window[v].data&&window[v].data[s.code])||{};
